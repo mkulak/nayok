@@ -4,3 +4,11 @@ Foo: bar
 BLABLABLA
 
 ###
+GET http://localhost:3000/notification-results
+
+###
+POST http://localhost:3000/echo/reversed
+
+
+NAJAL
+###
