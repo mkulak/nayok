@@ -3,17 +3,30 @@ use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use hyper::http::Version;
 use bytes::{Bytes};
 
-// impl Version {
-//     fn to_str(self) -> &'static str {
-//         match self {
-//             Version::HTTP_10 => "HTTP 1.0",
-//             Version::HTTP_11 => "HTTP 1.1",
-//             Version::HTTP_2 => "HTTP 2.0",
-//             Version::HTTP_3 => "HTTP 3.0",
-//             _ => panic!("Unknown http version")
-//         }
-//     }
-// }
+trait Signed {
+    fn foo(self) -> i32;
+}
+
+impl Signed for i32 {
+    fn foo(self) -> i32 {
+        self.abs()
+    }
+}
+
+trait ToString {
+    fn to_str(&self) -> &'static str;
+}
+impl ToString for Version {
+    fn to_str(&self) -> &'static str {
+        match *self {
+            Version::HTTP_10 => "HTTP 1.0",
+            Version::HTTP_11 => "HTTP 1.1",
+            Version::HTTP_2 => "HTTP 2.0",
+            Version::HTTP_3 => "HTTP 3.0",
+            _ => panic!("Unknown http version")
+        }
+    }
+}
 
 fn to_str(v: Version) -> &'static str {
     match v {
@@ -27,8 +40,8 @@ fn to_str(v: Version) -> &'static str {
 
 async fn routes(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
     let version = req.version();
-    let version_str = to_str(version).to_string();
-    // let version_str = (&version).to_str().to_string();
+    // let version_str = to_str(version).to_string();
+    let version_str = (&version).to_str().to_string();
     let method = req.method().clone();
     let uri = req.uri().clone();
     println!("{} {} {}", &version_str, method.as_str(), uri);
@@ -73,6 +86,7 @@ async fn routes(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    println!("{}", -345.foo());
     let addr = ([127, 0, 0, 1], 3000).into();
     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(routes)) });
     let server = Server::bind(&addr).serve(service);
