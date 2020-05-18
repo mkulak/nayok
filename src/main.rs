@@ -37,9 +37,9 @@ async fn routes(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
     });
     let body = req.into_body();
     let whole_body: Bytes = hyper::body::to_bytes(body).await?;
-    let vec = whole_body.iter().collect::<Vec<&u8>>();
+    let vec = whole_body.iter().cloned().collect::<Vec<u8>>();
     vec.iter().for_each(|b| {
-        print!("{},", **b)
+        print!("{},", *b)
     });
     println!();
 
