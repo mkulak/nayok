@@ -10,4 +10,6 @@ tokio = { version = "0.2.5", features = ["full"] }
 pretty_env_logger = "0.4"
 bytes = "0.5"
 futures-core = { version = "0.3", default-features = false }
-rusqlite = "*"
+rusqlite = { version = "0.23", features = ["chrono"] }
+base64 = "0.12"
+chrono = "0.4.*"

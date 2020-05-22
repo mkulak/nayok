@@ -5,6 +5,8 @@ use bytes::Bytes;
 use rusqlite::{Connection, Result};
 use rusqlite::NO_PARAMS;
 use std::collections::HashMap;
+use base64;
+use chrono::{DateTime, NaiveDateTime};
 
 trait ToString {
     fn to_str(&self) -> &'static str;
@@ -87,54 +89,47 @@ struct Cat {
 
 fn main() -> Result<()> {
     let conn = Connection::open("events.db")?;
-    conn.execute(SCHEMA_SQL, NO_PARAMS)?;
+    // conn.execute(SCHEMA_SQL, NO_PARAMS)?;
     let headers = "Foo: Bar;Bax: Boo";
     let method = "GET";
     let relative_uri = "/p1/p2?blah=bom";
-    // let body: Vec<u8> = vec![1, 2, 3];
+    let body = base64::encode(&vec![1, 2, 3][..]);
     conn.execute(
-        "INSERT INTO events (relative_uri, method, headers) values (?1, ?2, ?3)",
-        &[&relative_uri, &method, &headers],
-    )? ;
+        "INSERT INTO events (relative_uri, method, headers, body) values (?1, ?2, ?3, ?4)",
+        &[&relative_uri, &method, &headers, body.as_str()],
+    )?;
     let last_id = conn.last_insert_rowid();
     println!("last_id: {}", last_id);
 
 
-    // let mut cat_colors = HashMap::new();
-    // cat_colors.insert(String::from("Blue"), vec!["Tigger", "Sammy"]);
-    // cat_colors.insert(String::from("Black"), vec!["Oreo", "Biscuit"]);
-    //
-    // for (color, catnames) in &cat_colors {
-    //     conn.execute(
-    //         "INSERT INTO cat_colors (name) values (?1)",
-    //         &[&color.to_string()],
-    //     )?;
-    //     let last_id: String = conn.last_insert_rowid().to_string();
-    //
-    //     for cat in catnames {
-    //         conn.execute(
-    //             "INSERT INTO cats (name, color_id) values (?1, ?2)",
-    //             &[&cat.to_string(), &last_id],
-    //         )?;
-    //     }
-    // }
-    // let mut stmt = conn.prepare(
-    //     "SELECT c.name, cc.name from cats c
-    //      INNER JOIN cat_colors cc
-    //      ON cc.id = c.color_id;",
-    // )?;
-    //
-    // let cats = stmt.query_map(NO_PARAMS, |row| {
-    //     Ok(Cat {
-    //         name: row.get(0)?,
-    //         color: row.get(1)?,
-    //     })
-    // })?;
-    //
-    // for cat in cats {
-    //     println!("Found cat {:?}", cat);
-    // }
-    //
+    let mut stmt = conn.prepare(
+        "SELECT id, relative_uri, method, headers, body, created_at from events"
+    )?;
+
+    let events = stmt.query_map(NO_PARAMS, |row| {
+        Ok(Event {
+            id: row.get(0)?,
+            relative_uri: row.get(1)?,
+            method: row.get(2)?,
+            headers: row.get(3)?,
+            body_base64: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    })?.map(|res| { res.unwrap() });
+
+    for event in events {
+        println!("{:?}", event);
+    }
 
     Ok(())
+}
+
+#[derive(Debug)]
+struct Event {
+    id: u32,
+    relative_uri: String,
+    method: String,
+    headers: String,
+    body_base64: String,
+    created_at: NaiveDateTime
 }
