@@ -1,4 +1,4 @@
-POST http://localhost:3000/notifications
+POST http://localhost:3000/notifications?paramA=valueA&def=zerq
 Foo: bar
 
 BLABLABLA
