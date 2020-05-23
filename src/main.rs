@@ -1,12 +1,14 @@
+#![allow(dead_code)]
+
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use hyper::http::Version;
 use bytes::Bytes;
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, Result, ToSql};
 use rusqlite::NO_PARAMS;
 use std::collections::HashMap;
 use base64;
-use chrono::{DateTime, NaiveDateTime};
+use chrono::{DateTime, NaiveDateTime, Utc};
 
 trait ToString {
     fn to_str(&self) -> &'static str;
@@ -90,23 +92,26 @@ struct Cat {
 fn main() -> Result<()> {
     let conn = Connection::open("events.db")?;
     // conn.execute(SCHEMA_SQL, NO_PARAMS)?;
-    let headers = "Foo: Bar;Bax: Boo";
-    let method = "GET";
-    let relative_uri = "/p1/p2?blah=bom";
-    let body = base64::encode(&vec![1, 2, 3][..]);
-    conn.execute(
-        "INSERT INTO events (relative_uri, method, headers, body) values (?1, ?2, ?3, ?4)",
-        &[&relative_uri, &method, &headers, body.as_str()],
-    )?;
-    let last_id = conn.last_insert_rowid();
-    println!("last_id: {}", last_id);
+    // let headers = "Foo: Bar;Bax: Boo";
+    // let method = "GET";
+    // let relative_uri = "/p1/p2?blah=bom";
+    // let body = base64::encode(&vec![1, 2, 3][..]);
+    // conn.execute(
+    //     "INSERT INTO events (relative_uri, method, headers, body) values (?1, ?2, ?3, ?4)",
+    //     &[&relative_uri, &method, &headers, body.as_str()],
+    // )?;
+    // let last_id = conn.last_insert_rowid();
+    // println!("last_id: {}", last_id);
 
 
     let mut stmt = conn.prepare(
-        "SELECT id, relative_uri, method, headers, body, created_at from events"
+        "SELECT id, relative_uri, method, headers, body, created_at from events WHERE id > ?1 AND created_at > ?2"
     )?;
+    let date = DateTime::parse_from_rfc3339("2020-05-22T19:28:00+00:00").unwrap();
+    let d = date.format("%Y-%m-%d %H:%M:%S").to_string();
+    let params: &[&dyn ToSql] = &[&2, &d];
 
-    let events = stmt.query_map(NO_PARAMS, |row| {
+    let events = stmt.query_map(params, |row| {
         Ok(Event {
             id: row.get(0)?,
             relative_uri: row.get(1)?,
@@ -118,7 +123,7 @@ fn main() -> Result<()> {
     })?.map(|res| { res.unwrap() });
 
     for event in events {
-        println!("{:?}", event);
+        println!("{:?}", event.created_at.to_rfc3339());
     }
 
     Ok(())
@@ -131,5 +136,5 @@ struct Event {
     method: String,
     headers: String,
     body_base64: String,
-    created_at: NaiveDateTime
+    created_at: DateTime<Utc>
 }
