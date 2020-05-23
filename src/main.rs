@@ -28,7 +28,7 @@ impl ToString for Version {
 
 static SCHEMA_SQL: &'static str = include_str!("schema.sql");
 
-async fn routes(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+async fn save_notification(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
     let version = req.version();
     let version_str = (&version).to_str().to_string();
     let method = req.method().clone();
@@ -44,44 +44,35 @@ async fn routes(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
         print!("{},", *b)
     });
     println!();
+    Ok(Response::new(Body::from("OK")))
+}
 
+async fn routes(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    let uri = req.uri().clone();
+    let method = req.method().clone();
     match uri.path() {
         "/" => Ok(Response::new(Body::from("Hello"))),
-        "/notifications" => Ok(Response::new(Body::from("OK"))),
-        "/notification-results" if method == Method::GET => {
-            // let chunk_stream = whole_body.map_ok(|chunk| {
-            //     chunk
-            //         .iter()
-            //         .map(|byte| byte.to_ascii_uppercase())
-            //         .collect::<Vec<u8>>()
-            // });
-            // Ok(Response::new(Body::wrap_stream(chunk_stream)))
-            Ok(Response::new(Body::from("OK")))
-        }
-
-        "/echo/reversed" if method == Method::POST => {
-            let reversed_body = whole_body.iter().rev().cloned().collect::<Vec<u8>>();
-            Ok(Response::new(Body::from(reversed_body)))
-        }
-
-        // Return the 404 Not Found for other routes.
-        _ => {
-            let mut not_found = Response::default();
-            *not_found.status_mut() = StatusCode::NOT_FOUND;
-            Ok(not_found)
-        }
+        "/notifications" => save_notification(req).await,
+        "/notification-results" if method == Method::GET => Ok(Response::new(Body::from("OK"))),
+        _ => not_found()
     }
 }
 
-// #[tokio::main]
-// async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//     let addr = ([127, 0, 0, 1], 3000).into();
-//     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(routes)) });
-//     let server = Server::bind(&addr).serve(service);
-//     println!("Listening on http://{}", addr);
-//     server.await?;
-//     Ok(())
-// }
+fn not_found() -> Result<Response<Body>, hyper::Error> {
+    let mut not_found = Response::default();
+    *not_found.status_mut() = StatusCode::NOT_FOUND;
+    Ok(not_found)
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let addr = ([127, 0, 0, 1], 3000).into();
+    let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(routes)) });
+    let server = Server::bind(&addr).serve(service);
+    println!("Listening on http://{}", addr);
+    server.await?;
+    Ok(())
+}
 
 #[derive(Debug)]
 struct Cat {
@@ -89,7 +80,7 @@ struct Cat {
     color: String,
 }
 
-fn main() -> Result<()> {
+fn main2() -> Result<()> {
     let conn = Connection::open("events.db")?;
     // conn.execute(SCHEMA_SQL, NO_PARAMS)?;
     // let headers = "Foo: Bar;Bax: Boo";
