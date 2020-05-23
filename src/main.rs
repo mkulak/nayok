@@ -29,21 +29,26 @@ impl ToString for Version {
 static SCHEMA_SQL: &'static str = include_str!("schema.sql");
 
 async fn save_notification(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
-    let version = req.version();
-    let version_str = (&version).to_str().to_string();
     let method = req.method().clone();
-    let uri = req.uri().clone();
-    println!("{} {} {}", &version_str, method.as_str(), uri);
-    req.headers().iter().for_each(|h| {
-        println!("{}: {}", h.0.as_str(), h.1.to_str().unwrap());
-    });
+    let uri = req.uri().path_and_query().unwrap().clone();
+    // println!("{} {}", method.as_str(), uri);
+    // req.headers().iter().for_each(|h| {
+    //     println!("{}: {}", h.0.as_str(), h.1.to_str().unwrap());
+    // });
+    let headers = "";
     let body = req.into_body();
-    let whole_body: Bytes = hyper::body::to_bytes(body).await?;
-    let vec = whole_body.iter().cloned().collect::<Vec<u8>>();
-    vec.iter().for_each(|b| {
-        print!("{},", *b)
-    });
-    println!();
+    let body_bytes: Bytes = hyper::body::to_bytes(body).await?;
+    let body_vector = body_bytes.iter().cloned().collect::<Vec<u8>>();
+    let body_base64 = base64::encode(&body_vector[..]);
+
+    let conn = Connection::open("events.db").unwrap();
+    conn.execute(
+        "INSERT INTO events (relative_uri, method, headers, body) values (?1, ?2, ?3, ?4)",
+        &[uri.as_str(), method.as_str(), headers, body_base64.as_str()],
+    ).unwrap();
+    let last_id = conn.last_insert_rowid();
+    println!("last_id: {}", last_id);
+
     Ok(Response::new(Body::from("OK")))
 }
 
