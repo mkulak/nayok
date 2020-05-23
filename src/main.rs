@@ -9,6 +9,7 @@ use rusqlite::NO_PARAMS;
 use std::collections::HashMap;
 use base64;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use url::Url;
 
 static SCHEMA_SQL: &'static str = include_str!("schema.sql");
 
@@ -47,13 +48,31 @@ async fn save_notification(req: Request<Body>) -> Result<Response<Body>, hyper::
     Ok(Response::new(Body::from("OK")))
 }
 
+async fn load_notifications(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    let params: HashMap<String, String> = req.uri().query().map(|query| {
+        url::form_urlencoded::parse(query.as_bytes()).into_owned().collect()
+    }).unwrap_or_else(HashMap::new);
+    let default_id = "0".to_owned();
+    let id_str = params.get("from_id").unwrap_or(&default_id);
+    let default_date = "2000-01-01T00:00:00+00:00".to_owned();
+    let date_str = params.get("from_date").unwrap_or(&default_date);
+    let from_id = id_str.parse::<u32>();
+    let from_date = DateTime::parse_from_rfc3339(date_str);
+    let result = match (from_id, from_date) {
+        (Ok(id), Ok(date)) => format!("{} {}", id, date),
+        (Err(err), _) => format!("Parameter 'from_id' should be positive integer: {} {}", id_str, err),
+        (_, Err(err)) => format!("Parameter 'from_date' should be frc3339 date: {} {}", date_str, err)
+    };
+    Ok(Response::new(Body::from(result)))
+}
+
 async fn routes(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
     let uri = req.uri().clone();
     let method = req.method().clone();
     match uri.path() {
-        "/" => Ok(Response::new(Body::from("Hello"))),
+        "/" => Ok(Response::new(Body::from("Nayok operational"))),
         "/notifications" => save_notification(req).await,
-        "/notification-results" if method == Method::GET => Ok(Response::new(Body::from("OK"))),
+        "/notification-results" if method == Method::GET => load_notifications(req).await,
         _ => not_found()
     }
 }
@@ -98,5 +117,5 @@ struct Event {
     method: String,
     headers: String,
     body_base64: String,
-    created_at: DateTime<Utc>
+    created_at: DateTime<Utc>,
 }
