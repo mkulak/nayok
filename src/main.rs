@@ -18,6 +18,8 @@ static INSERT_EVENT_SQL: &'static str =
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // let conn = Connection::open("events.db")?;
+    // conn.execute(SCHEMA_SQL, NO_PARAMS)?;
     let addr = ([127, 0, 0, 1], 3000).into();
     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(routes)) });
     let server = Server::bind(&addr).serve(service);
@@ -41,7 +43,7 @@ async fn save_notification(req: Request<Body>) -> Result<Response<Body>, hyper::
         headers,
         body_base64
     };
-    save_event(&data);
+    save_impl(&data);
     Ok(Response::new(Body::from("OK")))
 }
 
@@ -83,7 +85,7 @@ fn not_found() -> Result<Response<Body>, hyper::Error> {
     Ok(not_found)
 }
 
-fn save_event(data: &EventCreationData) -> Result<(), rusqlite::Error> {
+fn save_impl(data: &EventCreationData) -> Result<(), rusqlite::Error> {
     let conn = Connection::open("events.db").unwrap();
     let headers = serde_json::to_string(&data.headers).unwrap();
     let args = [
@@ -93,8 +95,6 @@ fn save_event(data: &EventCreationData) -> Result<(), rusqlite::Error> {
         data.body_base64.as_str()
     ];
     conn.execute(INSERT_EVENT_SQL, &args).unwrap();
-    let last_id = conn.last_insert_rowid();
-    println!("last_id: {}", last_id);
     Ok(())
 }
 
