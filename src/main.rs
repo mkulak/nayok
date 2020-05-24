@@ -13,6 +13,8 @@ use url::Url;
 use serde::{Deserialize, Serialize};
 
 static SCHEMA_SQL: &'static str = include_str!("schema.sql");
+static INSERT_EVENT_SQL: &'static str =
+    "INSERT INTO events (relative_uri, method, headers, body) values (?1, ?2, ?3, ?4)";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -27,25 +29,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 async fn save_notification(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
     let method = req.method().clone();
     let uri = req.uri().path_and_query().unwrap().clone();
-    let mut headers = String::new();
-    req.headers().iter().for_each(|h| {
-        let res = format!("{}:{};", h.0.as_str(), h.1.to_str().unwrap());
-        headers.push_str(res.as_str())
-    });
-
+    let headers: HashMap<String, String> =
+        req.headers().iter().map(|h| { (h.0.as_str().to_owned(), h.1.to_str().unwrap().to_owned()) }).collect();
     let body = req.into_body();
     let body_bytes = hyper::body::to_bytes(body).await?;
     let body_vector = body_bytes.iter().cloned().collect::<Vec<u8>>();
     let body_base64 = base64::encode(&body_vector[..]);
-
-    let conn = Connection::open("events.db").unwrap();
-    conn.execute(
-        "INSERT INTO events (relative_uri, method, headers, body) values (?1, ?2, ?3, ?4)",
-        &[uri.as_str(), method.as_str(), headers.as_str(), body_base64.as_str()],
-    ).unwrap();
-    let last_id = conn.last_insert_rowid();
-    println!("last_id: {}", last_id);
-
+    let data = EventCreationData {
+        relative_uri: uri.to_string(),
+        method: method.to_string(),
+        headers,
+        body_base64
+    };
+    save_event(&data);
     Ok(Response::new(Body::from("OK")))
 }
 
@@ -63,7 +59,6 @@ async fn load_notifications(req: Request<Body>) -> Result<Response<Body>, hyper:
         (Ok(id), Ok(date)) => {
             let events = load_impl(id, &date).unwrap();
             serde_json::to_string(&events).unwrap()
-            // format!("{:?}", events)
         },
         (Err(err), _) => format!("Parameter 'from_id' should be positive integer: {} {}", id_str, err),
         (_, Err(err)) => format!("Parameter 'from_date' should be frc3339 date: {} {}", date_str, err)
@@ -88,6 +83,21 @@ fn not_found() -> Result<Response<Body>, hyper::Error> {
     Ok(not_found)
 }
 
+fn save_event(data: &EventCreationData) -> Result<(), rusqlite::Error> {
+    let conn = Connection::open("events.db").unwrap();
+    let headers = serde_json::to_string(&data.headers).unwrap();
+    let args = [
+        data.relative_uri.as_str(),
+        data.method.as_str(),
+        headers.as_str(),
+        data.body_base64.as_str()
+    ];
+    conn.execute(INSERT_EVENT_SQL, &args).unwrap();
+    let last_id = conn.last_insert_rowid();
+    println!("last_id: {}", last_id);
+    Ok(())
+}
+
 fn load_impl(id: u32, date: &DateTime<FixedOffset>) -> Result<Vec<Event>, rusqlite::Error> {
     let conn = Connection::open("events.db")?;
     let mut stmt = conn.prepare(
@@ -97,11 +107,12 @@ fn load_impl(id: u32, date: &DateTime<FixedOffset>) -> Result<Vec<Event>, rusqli
     let params: &[&dyn ToSql] = &[&id, &date_str];
 
     let events: Vec<Event> = stmt.query_map(params, |row| {
+        let headers_str: String = row.get(3)?;
         Ok(Event {
             id: row.get(0)?,
             relative_uri: row.get(1)?,
             method: row.get(2)?,
-            headers: row.get(3)?,
+            headers: serde_json::from_str(&headers_str).unwrap(),
             body_base64: row.get(4)?,
             created_at: row.get(5)?,
         })
@@ -111,11 +122,19 @@ fn load_impl(id: u32, date: &DateTime<FixedOffset>) -> Result<Vec<Event>, rusqli
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct EventCreationData {
+    relative_uri: String,
+    method: String,
+    headers: HashMap<String, String>,
+    body_base64: String
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct Event {
     id: u32,
     relative_uri: String,
     method: String,
-    headers: String,
+    headers: HashMap<String, String>,
     body_base64: String,
     created_at: DateTime<Utc>,
 }
