@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use base64;
 use chrono::{DateTime, NaiveDateTime, Utc, FixedOffset};
 use url::Url;
+use serde::{Deserialize, Serialize};
 
 static SCHEMA_SQL: &'static str = include_str!("schema.sql");
 
@@ -60,8 +61,9 @@ async fn load_notifications(req: Request<Body>) -> Result<Response<Body>, hyper:
     let from_date = DateTime::parse_from_rfc3339(date_str);
     let result = match (from_id, from_date) {
         (Ok(id), Ok(date)) => {
-            let events = load_impl(id, &date);
-            format!("{:?}", events.unwrap())
+            let events = load_impl(id, &date).unwrap();
+            serde_json::to_string(&events).unwrap()
+            // format!("{:?}", events)
         },
         (Err(err), _) => format!("Parameter 'from_id' should be positive integer: {} {}", id_str, err),
         (_, Err(err)) => format!("Parameter 'from_date' should be frc3339 date: {} {}", date_str, err)
@@ -105,14 +107,10 @@ fn load_impl(id: u32, date: &DateTime<FixedOffset>) -> Result<Vec<Event>, rusqli
         })
     })?.map(|res| { res.unwrap() }).collect();
 
-    // for event in events {
-    //     println!("{:?}", event.created_at.to_rfc3339());
-    // }
-
     Ok(events)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Event {
     id: u32,
     relative_uri: String,
