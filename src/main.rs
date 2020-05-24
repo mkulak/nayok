@@ -8,7 +8,7 @@ use rusqlite::{Connection, Result, ToSql};
 use rusqlite::NO_PARAMS;
 use std::collections::HashMap;
 use base64;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc, FixedOffset};
 use url::Url;
 
 static SCHEMA_SQL: &'static str = include_str!("schema.sql");
@@ -59,7 +59,10 @@ async fn load_notifications(req: Request<Body>) -> Result<Response<Body>, hyper:
     let from_id = id_str.parse::<u32>();
     let from_date = DateTime::parse_from_rfc3339(date_str);
     let result = match (from_id, from_date) {
-        (Ok(id), Ok(date)) => format!("{} {}", id, date),
+        (Ok(id), Ok(date)) => {
+            let events = load_impl(id, &date);
+            format!("{:?}", events.unwrap())
+        },
         (Err(err), _) => format!("Parameter 'from_id' should be positive integer: {} {}", id_str, err),
         (_, Err(err)) => format!("Parameter 'from_date' should be frc3339 date: {} {}", date_str, err)
     };
@@ -83,16 +86,15 @@ fn not_found() -> Result<Response<Body>, hyper::Error> {
     Ok(not_found)
 }
 
-fn main2() -> Result<()> {
+fn load_impl(id: u32, date: &DateTime<FixedOffset>) -> Result<Vec<Event>, rusqlite::Error> {
     let conn = Connection::open("events.db")?;
     let mut stmt = conn.prepare(
         "SELECT id, relative_uri, method, headers, body, created_at from events WHERE id > ?1 AND created_at > ?2"
     )?;
-    let date = DateTime::parse_from_rfc3339("2020-05-22T19:28:00+00:00").unwrap();
-    let d = date.format("%Y-%m-%d %H:%M:%S").to_string();
-    let params: &[&dyn ToSql] = &[&2, &d];
+    let date_str = date.format("%Y-%m-%d %H:%M:%S").to_string();
+    let params: &[&dyn ToSql] = &[&id, &date_str];
 
-    let events = stmt.query_map(params, |row| {
+    let events: Vec<Event> = stmt.query_map(params, |row| {
         Ok(Event {
             id: row.get(0)?,
             relative_uri: row.get(1)?,
@@ -101,13 +103,13 @@ fn main2() -> Result<()> {
             body_base64: row.get(4)?,
             created_at: row.get(5)?,
         })
-    })?.map(|res| { res.unwrap() });
+    })?.map(|res| { res.unwrap() }).collect();
 
-    for event in events {
-        println!("{:?}", event.created_at.to_rfc3339());
-    }
+    // for event in events {
+    //     println!("{:?}", event.created_at.to_rfc3339());
+    // }
 
-    Ok(())
+    Ok(events)
 }
 
 #[derive(Debug)]
