@@ -11,6 +11,8 @@ use base64;
 use chrono::{DateTime, NaiveDateTime, Utc, FixedOffset};
 use url::Url;
 use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
+use std::env;
 
 static SCHEMA_SQL: &'static str = include_str!("schema.sql");
 static INSERT_EVENT_SQL: &'static str =
@@ -20,7 +22,9 @@ static INSERT_EVENT_SQL: &'static str =
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // let conn = Connection::open("events.db")?;
     // conn.execute(SCHEMA_SQL, NO_PARAMS)?;
-    let addr = ([127, 0, 0, 1], 3000).into();
+    let port = env::var("NAYOK_PORT").unwrap_or("80".to_owned()).parse::<u16>()
+        .expect("NAYOK_PORT should contain port number");
+    let addr = ([0, 0, 0, 0], port).into();
     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(routes)) });
     let server = Server::bind(&addr).serve(service);
     println!("Listening on http://{}", addr);
@@ -28,26 +32,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-async fn save_notification(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+async fn routes(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    let uri = req.uri().clone();
     let method = req.method().clone();
-    let uri = req.uri().path_and_query().unwrap().clone();
-    let headers: HashMap<String, String> =
-        req.headers().iter().map(|h| { (h.0.as_str().to_owned(), h.1.to_str().unwrap().to_owned()) }).collect();
-    let body = req.into_body();
-    let body_bytes = hyper::body::to_bytes(body).await?;
-    let body_vector = body_bytes.iter().cloned().collect::<Vec<u8>>();
-    let body_base64 = base64::encode(&body_vector[..]);
-    let data = EventCreationData {
-        relative_uri: uri.to_string(),
-        method: method.to_string(),
-        headers,
-        body_base64
+    let response = match uri.path() {
+        "/" => Response::new(Body::from("Nayok operational")),
+        "/notifications" => save_notification(req).await,
+        "/notification-results" if method == Method::GET => load_notifications(req).await,
+        _ => not_found()
     };
-    save_impl(&data);
-    Ok(Response::new(Body::from("OK")))
+    Ok(response)
 }
 
-async fn load_notifications(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+fn not_found() -> Response<Body> {
+    Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
+}
+fn bad_request(message: &str) -> Response<Body> {
+    Response::builder().status(StatusCode::BAD_REQUEST).body(Body::from(message.to_owned())).unwrap()
+}
+
+async fn save_notification(req: Request<Body>) -> Response<Body> {
+    let method = req.method().clone();
+    let uri = req.uri().path_and_query().unwrap().clone();
+    let headers: HashMap<String, String> = req.headers().iter().map(|h| {
+        (h.0.as_str().to_owned(), h.1.to_str().unwrap().to_owned())
+    }).collect();
+    let body = req.into_body();
+    hyper::body::to_bytes(body).await.map(|body_bytes| {
+        let body_vector = body_bytes.iter().cloned().collect::<Vec<u8>>();
+        let body_base64 = base64::encode(&body_vector[..]);
+        let data = EventCreationData {
+            relative_uri: uri.to_string(),
+            method: method.to_string(),
+            headers,
+            body_base64,
+        };
+        save_impl(&data);
+        Response::new(Body::from("OK"))
+    }).unwrap_or(bad_request("can't read body"))
+}
+
+async fn load_notifications(req: Request<Body>) -> Response<Body> {
     let params: HashMap<String, String> = req.uri().query().map(|query| {
         url::form_urlencoded::parse(query.as_bytes()).into_owned().collect()
     }).unwrap_or_else(HashMap::new);
@@ -57,32 +82,21 @@ async fn load_notifications(req: Request<Body>) -> Result<Response<Body>, hyper:
     let date_str = params.get("from_date").unwrap_or(&default_date);
     let from_id = id_str.parse::<u32>();
     let from_date = DateTime::parse_from_rfc3339(date_str);
-    let result = match (from_id, from_date) {
+    match (from_id, from_date) {
         (Ok(id), Ok(date)) => {
             let events = load_impl(id, &date).unwrap();
-            serde_json::to_string(&events).unwrap()
+            let result = serde_json::to_string(&events).unwrap();
+            Response::new(Body::from(result))
+        }
+        (Err(err), _) => {
+            let msg = format!("Parameter 'from_id' should be positive integer: {} {}", id_str, err);
+            bad_request(&msg)
         },
-        (Err(err), _) => format!("Parameter 'from_id' should be positive integer: {} {}", id_str, err),
-        (_, Err(err)) => format!("Parameter 'from_date' should be frc3339 date: {} {}", date_str, err)
-    };
-    Ok(Response::new(Body::from(result)))
-}
-
-async fn routes(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
-    let uri = req.uri().clone();
-    let method = req.method().clone();
-    match uri.path() {
-        "/" => Ok(Response::new(Body::from("Nayok operational"))),
-        "/notifications" => save_notification(req).await,
-        "/notification-results" if method == Method::GET => load_notifications(req).await,
-        _ => not_found()
+        (_, Err(err)) => {
+            let msg = format!("Parameter 'from_date' should be frc3339 date: {} {}", date_str, err);
+            bad_request(&msg)
+        }
     }
-}
-
-fn not_found() -> Result<Response<Body>, hyper::Error> {
-    let mut not_found = Response::default();
-    *not_found.status_mut() = StatusCode::NOT_FOUND;
-    Ok(not_found)
 }
 
 fn save_impl(data: &EventCreationData) -> Result<(), rusqlite::Error> {
@@ -126,7 +140,7 @@ struct EventCreationData {
     relative_uri: String,
     method: String,
     headers: HashMap<String, String>,
-    body_base64: String
+    body_base64: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
