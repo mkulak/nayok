@@ -14,6 +14,10 @@ use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::env;
 
+mod data;
+
+use data::Event;
+
 static SCHEMA_SQL: &'static str = include_str!("schema.sql");
 static INSERT_EVENT_SQL: &'static str =
     "INSERT INTO events (relative_uri, method, headers, body) values (?1, ?2, ?3, ?4)";
@@ -22,7 +26,7 @@ static INSERT_EVENT_SQL: &'static str =
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // let conn = Connection::open("events.db")?;
     // conn.execute(SCHEMA_SQL, NO_PARAMS)?;
-    let port = env::var("NAYOK_PORT").unwrap_or("80".to_owned()).parse::<u16>()
+    let port = env::var("NAYOK_PORT").unwrap_or("8080".to_owned()).parse::<u16>()
         .expect("NAYOK_PORT should contain port number");
     let addr = ([0, 0, 0, 0], port).into();
     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(routes)) });
@@ -143,12 +147,3 @@ struct EventCreationData {
     body_base64: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Event {
-    id: u32,
-    relative_uri: String,
-    method: String,
-    headers: HashMap<String, String>,
-    body_base64: String,
-    created_at: DateTime<Utc>,
-}

@@ -29,10 +29,11 @@ GET http://104.197.109.21:8080/notification-results?from_id=0&from_date=2020-05-
 POST http://kvarto.net/notifications?test=test_value
 
 ###
+# @no-redirect
 GET http://kvarto.net
 
 ###
-GET http://kvarto.net/notification-results
+GET https://kvarto.net/notification-results
 
 ###
 

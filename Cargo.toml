@@ -4,6 +4,14 @@ version = "0.1.0"
 authors = ["mkulak <kleshney@gmail.com>"]
 edition = "2018"
 
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[[bin]]
+name = "client"
+path = "src/client.rs"
+
 [dependencies]
 hyper = "0.13.*"
 tokio = { version = "0.2.*", features = ["full"] }
@@ -16,3 +24,4 @@ chrono = { version = "0.4.*", features = ["serde"] }
 url = "2.1.*"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+hyper-tls = "0.4.*"
