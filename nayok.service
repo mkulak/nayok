@@ -1,0 +1,14 @@
+
+[Unit]
+Description=Nayok Service
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/home/xap4o/nayok
+WorkingDirectory=/home/xap4o
+
+[Install]
+WantedBy=multi-user.target
+
