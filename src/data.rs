@@ -1,6 +1,7 @@
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, NaiveDateTime, Utc, FixedOffset};
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Event {

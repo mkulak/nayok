@@ -1,31 +1,36 @@
 #![allow(dead_code)]
 
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
-use hyper::http::Version;
-use bytes::Bytes;
-use rusqlite::{Connection, Result, ToSql};
-use rusqlite::NO_PARAMS;
 use std::collections::HashMap;
-use base64;
-use chrono::{DateTime, NaiveDateTime, Utc, FixedOffset};
-use url::Url;
-use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::env;
-
-mod data;
+use std::path::Path;
+use base64;
+use chrono::{DateTime, FixedOffset};
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use hyper::service::{make_service_fn, service_fn};
+use rusqlite::{Connection, Result, ToSql};
+use rusqlite::NO_PARAMS;
+use serde::{Deserialize, Serialize};
 
 use data::Event;
+
+mod data;
 
 static SCHEMA_SQL: &'static str = include_str!("schema.sql");
 static INSERT_EVENT_SQL: &'static str =
     "INSERT INTO events (relative_uri, method, headers, body) values (?1, ?2, ?3, ?4)";
+static SELECT_EVENTS_SQL: &'static str =
+    "SELECT id, relative_uri, method, headers, body, created_at from events WHERE id > ?1 AND created_at > ?2";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // let conn = Connection::open("events.db")?;
-    // conn.execute(SCHEMA_SQL, NO_PARAMS)?;
+    if !Path::new("events.db").exists() {
+        println!("Creating events.db from scratch");
+        let conn = Connection::open("events.db")?;
+        conn.execute(SCHEMA_SQL, NO_PARAMS)?;
+    } else {
+        println!("Found events.db");
+    }
     let port = env::var("NAYOK_PORT").unwrap_or("8080".to_owned()).parse::<u16>()
         .expect("NAYOK_PORT should contain port number");
     let addr = ([0, 0, 0, 0], port).into();
@@ -71,7 +76,8 @@ async fn save_notification(req: Request<Body>) -> Response<Body> {
             headers,
             body_base64,
         };
-        save_impl(&data);
+        println!("received {:?}", data);
+        save_impl(&data).expect("Cannot save data");
         Response::new(Body::from("OK"))
     }).unwrap_or(bad_request("can't read body"))
 }
@@ -118,9 +124,7 @@ fn save_impl(data: &EventCreationData) -> Result<(), rusqlite::Error> {
 
 fn load_impl(id: u32, date: &DateTime<FixedOffset>) -> Result<Vec<Event>, rusqlite::Error> {
     let conn = Connection::open("events.db")?;
-    let mut stmt = conn.prepare(
-        "SELECT id, relative_uri, method, headers, body, created_at from events WHERE id > ?1 AND created_at > ?2"
-    )?;
+    let mut stmt = conn.prepare(SELECT_EVENTS_SQL)?;
     let date_str = date.format("%Y-%m-%d %H:%M:%S").to_string();
     let params: &[&dyn ToSql] = &[&id, &date_str];
 
@@ -134,7 +138,7 @@ fn load_impl(id: u32, date: &DateTime<FixedOffset>) -> Result<Vec<Event>, rusqli
             body_base64: row.get(4)?,
             created_at: row.get(5)?,
         })
-    })?.map(|res| { res.unwrap() }).collect();
+    })?.map(|res| res.unwrap() ).collect();
 
     Ok(events)
 }
