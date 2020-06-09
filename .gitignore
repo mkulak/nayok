@@ -1,1 +1,7 @@
 /target
+.idea
+*.so
+*.h
+/etc
+/lib*/
+/usr
