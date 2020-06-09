@@ -48,8 +48,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .arg(
             Arg::with_name("TOKEN")
                 .help("Auth token for authorizing requests to /notification-results")
-                .short("s")
-                .long("secret-token")
+                .short("t")
+                .long("auth-token")
                 .env("NAYOK_TOKEN")
                 .takes_value(true)
                 .required(true)

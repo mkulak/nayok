@@ -1,13 +1,10 @@
 #![allow(dead_code)]
-// #![feature(async_await, async_closure)]
 
 pub mod data;
 
 use bytes::buf::BufExt as _;
-use hyper::Client;
+use hyper::{Client, Method, Response};
 use hyper_tls::HttpsConnector;
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, NaiveDateTime, Utc, FixedOffset};
 use data::Event;
 use url::Url;
 use hyper::Uri;
@@ -24,13 +21,13 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 #[tokio::main]
 async fn main() -> Result<()> {
     let matches = App::new("Nayok client")
-        .version("0.1.0")
+        .version("0.2.0")
         .about("Periodically retrieves saved http requests from Nayok server and re-sends them to specified address")
         .arg(
             Arg::with_name("SRC_URL")
                 .help("Sets base url of nayok server")
                 .short("s")
-                .long("src_base_url")
+                .long("src-base-url")
                 .takes_value(true)
                 .default_value("https://kvarto.net")
         )
@@ -38,7 +35,7 @@ async fn main() -> Result<()> {
             Arg::with_name("DST_URL")
                 .help("Sets base url of receiver")
                 .short("d")
-                .long("dst_base_url")
+                .long("dst-base-url")
                 .takes_value(true)
                 .default_value("http://localhost:8080")
         )
@@ -52,10 +49,26 @@ async fn main() -> Result<()> {
         )
         .arg(
             Arg::with_name("FROM_DATE")
-                .help("Only send events created after specified date (RFC3339)")
+                .help("Only send events created after specified date (RFC3339, example: 2020-06-09T23:59:59Z)")
                 .short("f")
-                .long("from_date")
+                .long("from-date")
                 .takes_value(true)
+        )
+        .arg(
+            Arg::with_name("FROM_ID")
+                .help("Only send events with ids bigger than specified")
+                .long("from-id")
+                .default_value("0")
+                .takes_value(true)
+        )
+        .arg(
+            Arg::with_name("TOKEN")
+                .help("Auth token for authorizing requests to /notification-results")
+                .short("t")
+                .long("auth-token")
+                .env("NAYOK_TOKEN")
+                .takes_value(true)
+                .required(true)
         )
         .get_matches();
 
@@ -66,7 +79,8 @@ async fn main() -> Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
     let from_date = matches.value_of("FROM_DATE").unwrap_or(now.as_str());
     let src_url_with_path = src_base_url.join("/notification-results").unwrap();
-    let mut from_id: u32 = 0;
+    let mut from_id: u32 = matches.value_of("FROM_ID").unwrap().parse::<u32>().expect("invalid from_id");
+    let token = matches.value_of("TOKEN").unwrap().to_owned();
 
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, Body>(https);
@@ -77,29 +91,31 @@ async fn main() -> Result<()> {
             .append_pair("from_date", from_date)
             .append_pair("from_id", from_id.to_string().as_str());
 
-        println!("{}", src_url);
-        let events = fetch_events(&client, src_url).await?;
+        let events = fetch_events(&client, src_url, token.as_str()).await?;
         for event in events {
             let res = send(&client, dst_base_url.clone(), &event).await;
-            let status = if res.is_ok() { "success" } else { "fail" };
+            let status = if res.map(|r| r.status().is_success()).unwrap_or(false) { "success" } else { "fail" };
             println!("{}: {} {} {}", status, event.id, event.method.as_str(), event.relative_uri.as_str());
             from_id = from_id.max(event.id);
         }
         thread::sleep(interval);
     }
-
-    Ok(())
 }
 
-async fn fetch_events<C>(client: &Client<C, Body>, url: Url) -> Result<Vec<Event>>
+async fn fetch_events<C>(client: &Client<C, Body>, url: Url, token: &str) -> Result<Vec<Event>>
     where C: Connect + Clone + Send + Sync + 'static {
-        let res = client.get(url.into_string().parse::<Uri>()?).await?;
+        let req = Request::builder()
+            .method(Method::GET)
+            .header("Authorization", token)
+            .uri(url.into_string().parse::<Uri>()?)
+            .body(Body::empty())?;
+        let res = client.request(req).await?;
         let body = hyper::body::aggregate(res).await?;
         let events = serde_json::from_reader(body.reader())?;
         Ok(events)
     }
 
-async fn send<C>(client: &Client<C, Body>, base_url: Url, event: &Event) -> Result<()>
+async fn send<C>(client: &Client<C, Body>, base_url: Url, event: &Event) -> Result<Response<Body>>
     where C: Connect + Clone + Send + Sync + 'static {
     let dst_url = base_url.clone().join(event.relative_uri.as_str())?;
     let body = base64::decode(event.body_base64.to_owned())?;
@@ -110,5 +126,5 @@ async fn send<C>(client: &Client<C, Body>, base_url: Url, event: &Event) -> Resu
         builder = builder.header(k, v);
     }
     let req = builder.body(Body::from(body))?;
-    client.request(req).await.map(|response| ()).map_err(|e| e.into())
+    client.request(req).await.map_err(|e| e.into())
 }
