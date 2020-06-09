@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::env;
 use std::path::Path;
 use base64;
 use chrono::{DateTime, FixedOffset};
@@ -11,6 +10,8 @@ use hyper::service::{make_service_fn, service_fn};
 use rusqlite::{Connection, Result, ToSql};
 use rusqlite::NO_PARAMS;
 use serde::{Deserialize, Serialize};
+use clap::{Arg, App};
+use std::env;
 
 use data::Event;
 
@@ -24,15 +25,48 @@ static SELECT_EVENTS_SQL: &'static str =
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if !Path::new("events.db").exists() {
-        println!("Creating events.db from scratch");
-        let conn = Connection::open("events.db")?;
+    let matches = App::new("Nayok server")
+        .version("0.2.0")
+        .about("Saves all http requests received on /n/* and exposes them as JSON")
+        .arg(
+            Arg::with_name("PORT")
+                .help("Port to listen on")
+                .short("p")
+                .long("port")
+                .takes_value(true)
+                .env("NAYOK_PORT")
+                .default_value("8080")
+        )
+        .arg(
+            Arg::with_name("DB_FILE")
+                .help("Path to sqlite db file")
+                .short("d")
+                .long("db-file")
+                .takes_value(true)
+                .default_value("events.db")
+        )
+        .arg(
+            Arg::with_name("TOKEN")
+                .help("Auth token for authorizing requests to /notification-results")
+                .short("s")
+                .long("secret-token")
+                .env("NAYOK_TOKEN")
+                .takes_value(true)
+                .required(true)
+        )
+        .get_matches();
+
+    let token = matches.value_of("TOKEN").unwrap().to_owned();
+    env::set_var("NAYOK_TOKEN", token);
+    let db_file = matches.value_of("DB_FILE").unwrap();
+    if !Path::new(db_file).exists() {
+        println!("Creating db file {} from scratch", db_file);
+        let conn = Connection::open(db_file)?;
         conn.execute(SCHEMA_SQL, NO_PARAMS)?;
     } else {
-        println!("Found events.db");
+        println!("Found db file {}", db_file);
     }
-    let port = env::var("NAYOK_PORT").unwrap_or("8080".to_owned()).parse::<u16>()
-        .expect("NAYOK_PORT should contain port number");
+    let port = matches.value_of("PORT").unwrap().parse::<u16>().expect("Invalid port value");
     let addr = ([0, 0, 0, 0], port).into();
     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(routes)) });
     let server = Server::bind(&addr).serve(service);
@@ -50,7 +84,12 @@ async fn routes(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     } else if path.starts_with("/n/") {
         save_notification(req).await
     } else if path == "/notification-results" && method == Method::GET {
-        load_notifications(req).await
+        let token = env::var("NAYOK_TOKEN").unwrap();
+        if req.headers().get("Authorization").filter(|v| **v == token).is_some() {
+            load_notifications(req).await
+        } else {
+            unauthorized()
+        }
     } else {
         not_found()
     };
@@ -63,6 +102,10 @@ fn not_found() -> Response<Body> {
 
 fn bad_request(message: &str) -> Response<Body> {
     Response::builder().status(StatusCode::BAD_REQUEST).body(Body::from(message.to_owned())).unwrap()
+}
+
+fn unauthorized() -> Response<Body> {
+    Response::builder().status(StatusCode::UNAUTHORIZED).body(Body::from("Invalid auth token")).unwrap()
 }
 
 async fn save_notification(req: Request<Body>) -> Response<Body> {

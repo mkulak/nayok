@@ -1,4 +1,4 @@
-PUT http://localhost:8080/n/hlop?paramA=valueA&def=zerq
+PUT http://localhost:8080/n/hlop?try=1
 Foo: Loo
 header1: value1
 
@@ -7,7 +7,7 @@ BLABLABLA
 ###
 #GET http://localhost:8080/notification-results?from_id=12&from_date=2020-05-22T19:28:00%2B02:00
 GET http://localhost:8080/notification-results?from_id=36&from_date=2020-05-22T19:28:00Z
-
+Authorization: test
 
 POST http://104.197.109.21:8080/notifications?param1=value1
 Header1: Value1
