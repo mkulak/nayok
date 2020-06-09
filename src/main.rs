@@ -44,11 +44,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 async fn routes(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     let uri = req.uri().clone();
     let method = req.method().clone();
-    let response = match uri.path() {
-        "/" => Response::new(Body::from("Nayok operational")),
-        "/notifications" => save_notification(req).await,
-        "/notification-results" if method == Method::GET => load_notifications(req).await,
-        _ => not_found()
+    let path = uri.path();
+    let response = if path == "/" {
+        Response::new(Body::from("Nayok operational"))
+    } else if path.starts_with("/n/") {
+        save_notification(req).await
+    } else if path == "/notification-results" && method == Method::GET {
+        load_notifications(req).await
+    } else {
+        not_found()
     };
     Ok(response)
 }
@@ -56,6 +60,7 @@ async fn routes(req: Request<Body>) -> Result<Response<Body>, Infallible> {
 fn not_found() -> Response<Body> {
     Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
 }
+
 fn bad_request(message: &str) -> Response<Body> {
     Response::builder().status(StatusCode::BAD_REQUEST).body(Body::from(message.to_owned())).unwrap()
 }
@@ -71,7 +76,7 @@ async fn save_notification(req: Request<Body>) -> Response<Body> {
         let body_vector = body_bytes.iter().cloned().collect::<Vec<u8>>();
         let body_base64 = base64::encode(&body_vector[..]);
         let data = EventCreationData {
-            relative_uri: uri.to_string(),
+            relative_uri: uri.to_string()[2..].to_owned(),
             method: method.to_string(),
             headers,
             body_base64,
@@ -101,7 +106,7 @@ async fn load_notifications(req: Request<Body>) -> Response<Body> {
         (Err(err), _) => {
             let msg = format!("Parameter 'from_id' should be positive integer: {} {}", id_str, err);
             bad_request(&msg)
-        },
+        }
         (_, Err(err)) => {
             let msg = format!("Parameter 'from_date' should be frc3339 date: {} {}", date_str, err);
             bad_request(&msg)
@@ -138,7 +143,7 @@ fn load_impl(id: u32, date: &DateTime<FixedOffset>) -> Result<Vec<Event>, rusqli
             body_base64: row.get(4)?,
             created_at: row.get(5)?,
         })
-    })?.map(|res| res.unwrap() ).collect();
+    })?.map(|res| res.unwrap()).collect();
 
     Ok(events)
 }

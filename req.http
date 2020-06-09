@@ -1,18 +1,13 @@
-POST http://localhost:8080/notifications?paramA=valueA&def=zerq
-Foo: bar
+PUT http://localhost:8080/n/hlop?paramA=valueA&def=zerq
+Foo: Loo
+header1: value1
 
 BLABLABLA
 
 ###
 #GET http://localhost:8080/notification-results?from_id=12&from_date=2020-05-22T19:28:00%2B02:00
-GET http://localhost:8080/notification-results?from_id=0&from_date=2020-05-22T19:28:00Z
+GET http://localhost:8080/notification-results?from_id=36&from_date=2020-05-22T19:28:00Z
 
-###
-POST http://localhost:8080/echo/reversed
-
-
-NAJAL
-###
 
 POST http://104.197.109.21:8080/notifications?param1=value1
 Header1: Value1
