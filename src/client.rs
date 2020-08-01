@@ -123,7 +123,9 @@ async fn send<C>(client: &Client<C, Body>, base_url: Url, event: &Event) -> Resu
         .method(event.method.as_str())
         .uri(dst_url.into_string().parse::<Uri>()?);
     for (k, v) in &event.headers {
-        builder = builder.header(k, v);
+        if k != "host" {
+            builder = builder.header(k, v);
+        }
     }
     let req = builder.body(Body::from(body))?;
     client.request(req).await.map_err(|e| e.into())

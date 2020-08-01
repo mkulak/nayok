@@ -9,7 +9,13 @@ with http code 200 to the caller.
 
 Build production
 =
-```shell script
+```shell script  
+export TARGET_CC="x86_64-unknown-linux-gnu-gcc"
+export TARGET_CFLAGS="-I $(pwd)/usr/include/x86_64-linux-gnu -isystem $(pwd)/usr/include"
+export LD_LIBRARY_PATH="$(pwd)/usr/lib/x86_64-linux-gnu;$(pwd)/lib/x86_64-linux-gnu"
+export OPENSSL_DIR="$(pwd)/usr/"
+export OPENSSL_LIB_DIR="$(pwd)/usr/lib/x86_64-linux-gnu/"
+
 cargo build --target=x86_64-unknown-linux-musl --bin=nayok --release
 ```     
 Manual deploy

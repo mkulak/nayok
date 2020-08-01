@@ -21,7 +21,7 @@ GET http://104.197.109.21:8080/
 GET http://104.197.109.21:8080/notification-results?from_id=0&from_date=2020-05-22T19:28:00Z
 
 ###
-POST https://kvarto.net/notifications?test=test_value_32
+POST https://kvarto.net/n/notifications?test=4
 
 
 this is nice test
@@ -31,7 +31,5 @@ this is nice test
 GET http://kvarto.net
 
 ###
-GET https://kvarto.net/notification-results
-
-###
-
+GET https://kvarto.net/notification-results?from_id=80
+Authorization: test
